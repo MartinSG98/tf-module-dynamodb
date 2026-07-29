@@ -67,6 +67,38 @@ variable "ttl_attribute" {
   default     = null
 }
 
+variable "billing_mode" {
+  type        = string
+  description = "Billing mode: PAY_PER_REQUEST (on-demand, the default) or PROVISIONED. PROVISIONED with small capacities stays within the DynamoDB always-free tier (25 RCU + 25 WCU per account)."
+  default     = "PAY_PER_REQUEST"
+  validation {
+    condition     = contains(["PAY_PER_REQUEST", "PROVISIONED"], var.billing_mode)
+    error_message = "billing_mode must be PAY_PER_REQUEST or PROVISIONED."
+  }
+}
+
+variable "read_capacity" {
+  type        = number
+  description = "Read capacity units. Required when billing_mode is PROVISIONED, ignored otherwise."
+  default     = null
+  validation {
+    condition     = var.billing_mode != "PROVISIONED" || (var.read_capacity != null && var.write_capacity != null)
+    error_message = "read_capacity and write_capacity are required when billing_mode is PROVISIONED."
+  }
+}
+
+variable "write_capacity" {
+  type        = number
+  description = "Write capacity units. Required when billing_mode is PROVISIONED, ignored otherwise."
+  default     = null
+}
+
+variable "deletion_protection_enabled" {
+  type        = bool
+  description = "Protect the table from deletion. Keep true for anything holding real data; set false only for tables that are safe to destroy and recreate."
+  default     = true
+}
+
 variable "account_shortname" {
   type        = string
   description = "Optional short name for the current account, used in resource name suffixes. Falls back to the raw account ID when not set."
