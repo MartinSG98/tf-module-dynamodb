@@ -1,9 +1,13 @@
 # DynamoDB table resource
 resource "aws_dynamodb_table" "this" {
   name         = "${var.name_prefix}-ddb-${module.helpers.name_suffix_global}"
-  billing_mode = "PAY_PER_REQUEST"
+  billing_mode = var.billing_mode
   hash_key     = var.partition_key
   range_key    = var.sort_key
+
+  # Only meaningful (and only allowed to be set) in PROVISIONED mode
+  read_capacity  = var.billing_mode == "PROVISIONED" ? var.read_capacity : null
+  write_capacity = var.billing_mode == "PROVISIONED" ? var.write_capacity : null
 
   # Partition key (required)
   attribute {
@@ -38,7 +42,7 @@ resource "aws_dynamodb_table" "this" {
     enabled = true
   }
 
-  deletion_protection_enabled = true
+  deletion_protection_enabled = var.deletion_protection_enabled
 
   tags = local.tags
 }
