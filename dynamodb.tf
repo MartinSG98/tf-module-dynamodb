@@ -9,17 +9,38 @@ resource "aws_dynamodb_table" "this" {
   read_capacity  = var.billing_mode == "PROVISIONED" ? var.read_capacity : null
   write_capacity = var.billing_mode == "PROVISIONED" ? var.write_capacity : null
 
-  # Partition key (required)
-  attribute {
-    name = var.partition_key
-    type = var.partition_key_type
+  # Key attributes of the table and its indexes. DynamoDB only accepts attributes that some key uses.
+  dynamic "attribute" {
+    for_each = local.key_attributes
+    content {
+      name = attribute.key
+      type = attribute.value
+    }
   }
 
-  dynamic "attribute" {
-    for_each = var.sort_key != null ? [1] : []
+  dynamic "global_secondary_index" {
+    for_each = var.global_secondary_indexes
+    iterator = index
     content {
-      name = var.sort_key
-      type = var.sort_key_type
+      name               = index.value.name
+      projection_type    = index.value.projection_type
+      non_key_attributes = index.value.non_key_attributes
+
+      # key_schema replaces the index's hash_key and range_key, which the provider deprecated in 6.x.
+      key_schema {
+        attribute_name = index.value.partition_key
+        key_type       = "HASH"
+      }
+      dynamic "key_schema" {
+        for_each = index.value.sort_key != null ? [index.value.sort_key] : []
+        content {
+          attribute_name = key_schema.value
+          key_type       = "RANGE"
+        }
+      }
+
+      read_capacity  = var.billing_mode == "PROVISIONED" ? coalesce(index.value.read_capacity, var.read_capacity) : null
+      write_capacity = var.billing_mode == "PROVISIONED" ? coalesce(index.value.write_capacity, var.write_capacity) : null
     }
   }
 

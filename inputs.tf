@@ -61,6 +61,55 @@ variable "sort_key_type" {
   }
 }
 
+variable "global_secondary_indexes" {
+  type = list(object({
+    name               = string
+    partition_key      = string
+    partition_key_type = string
+    sort_key           = optional(string)
+    sort_key_type      = optional(string)
+    projection_type    = optional(string, "ALL")
+    non_key_attributes = optional(list(string))
+    read_capacity      = optional(number)
+    write_capacity     = optional(number)
+  }))
+  description = "Global secondary indexes. Key types are S, N or B. projection_type is ALL (the default), KEYS_ONLY or INCLUDE, and INCLUDE needs non_key_attributes. With PROVISIONED billing an index takes the table's capacity unless it sets its own."
+  default     = []
+
+  validation {
+    condition = alltrue([
+      for index in var.global_secondary_indexes :
+      contains(["S", "N", "B"], index.partition_key_type) && (index.sort_key == null) == (index.sort_key_type == null) && (index.sort_key_type == null || contains(["S", "N", "B"], coalesce(index.sort_key_type, "S")))
+    ])
+    error_message = "Each index needs a partition_key_type of S, N or B, and its sort_key and sort_key_type must both be set or both be null."
+  }
+  validation {
+    condition = alltrue([
+      for index in var.global_secondary_indexes :
+      contains(["ALL", "KEYS_ONLY", "INCLUDE"], index.projection_type) && (index.projection_type == "INCLUDE") == (index.non_key_attributes != null)
+    ])
+    error_message = "projection_type must be ALL, KEYS_ONLY or INCLUDE, and non_key_attributes is set with INCLUDE only."
+  }
+  validation {
+    condition     = length(distinct([for index in var.global_secondary_indexes : index.name])) == length(var.global_secondary_indexes)
+    error_message = "Index names must be unique."
+  }
+  validation {
+    # The table declares each key attribute once, so an attribute used by several keys must keep one type.
+    condition = alltrue([
+      for name, types in {
+        for key in concat(
+          [{ name = var.partition_key, type = var.partition_key_type }],
+          var.sort_key != null ? [{ name = var.sort_key, type = var.sort_key_type }] : [],
+          [for index in var.global_secondary_indexes : { name = index.partition_key, type = index.partition_key_type }],
+          [for index in var.global_secondary_indexes : { name = index.sort_key, type = index.sort_key_type } if index.sort_key != null],
+        ) : key.name => key.type...
+      } : length(distinct(types)) == 1
+    ])
+    error_message = "A key attribute used by the table and its indexes must have the same type everywhere."
+  }
+}
+
 variable "ttl_attribute" {
   type        = string
   description = "Attribute name for TTL (Time To Live) - optional"
