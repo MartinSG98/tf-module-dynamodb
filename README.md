@@ -1,12 +1,12 @@
 # tf-module-dynamodb
 
-Creates a DynamoDB table with safe defaults: point-in-time recovery, encryption at rest with the AWS managed KMS key, and deletion protection. Billing is on demand unless you choose provisioned capacity, and items can expire through an optional TTL attribute. The module covers the basics only, so there is no capacity auto scaling, no replication and there are no secondary indexes.
+Creates a DynamoDB table with safe defaults: point-in-time recovery, encryption at rest with the AWS managed KMS key, and deletion protection. Billing is on demand unless you choose provisioned capacity, items can expire through an optional TTL attribute, and the table can have global secondary indexes. The module covers the basics only, so there is no capacity auto scaling, no replication and there are no local secondary indexes.
 
-The table is named `<name_prefix>-ddb-<environment>-gbl-<account>`, with the global name suffix from [tf-module-helpers](https://github.com/MartinSG98/tf-module-helpers). Point-in-time recovery keeps one day of history (`recovery_period_in_days = 1`). The module needs Terraform 1.9 or newer, because some input validations refer to other inputs, and the AWS provider 6.x.
+The table is named `<name_prefix>-ddb-<environment>-gbl-<account>`, with the global name suffix from [tf-module-helpers](https://github.com/MartinSG98/tf-module-helpers). Point-in-time recovery keeps one day of history (`recovery_period_in_days = 1`). The module needs Terraform 1.9 or newer, because some input validations refer to other inputs, and the AWS provider 6.37 or newer, the first release where an index's `key_schema` works without known bugs.
 
 ```hcl
 module "orders_table" {
-  source = "git::https://github.com/MartinSG98/tf-module-dynamodb.git?ref=1.1.0"
+  source = "git::https://github.com/MartinSG98/tf-module-dynamodb.git?ref=1.2.0"
 
   environment = var.environment
   name_prefix = "myapp_orders"
@@ -29,6 +29,20 @@ For a small table that should stay within the DynamoDB always-free tier (25 read
   write_capacity = 5
 ```
 
+To query the table by another key, add a global secondary index. Each index names its keys, and the module declares every key attribute on the table once, so two indexes can share one. Indexes project every attribute unless you pick `KEYS_ONLY`, or `INCLUDE` with a list of attributes. With provisioned billing an index takes the table's capacity unless it sets its own.
+
+```hcl
+  global_secondary_indexes = [
+    {
+      name               = "by-customer"
+      partition_key      = "customerId"
+      partition_key_type = "S"
+      sort_key           = "createdAt"
+      sort_key_type      = "S"
+    },
+  ]
+```
+
 Deletion protection is on by default. Turn it off with `deletion_protection_enabled = false` only for tables that are safe to destroy and create again.
 
 ## Inputs
@@ -41,6 +55,7 @@ Deletion protection is on by default. Turn it off with `deletion_protection_enab
 | `partition_key_type` | `string` | required | Partition key type: `S` (string), `N` (number) or `B` (binary) |
 | `sort_key` | `string` | `null` | Sort (range) key attribute. Set together with `sort_key_type` or not at all |
 | `sort_key_type` | `string` | `null` | Sort key type: `S`, `N` or `B` |
+| `global_secondary_indexes` | `list(object)` | `[]` | Indexes, each with a `name`, `partition_key` and `partition_key_type`, and optionally `sort_key` and `sort_key_type`, `projection_type` (`ALL`, `KEYS_ONLY` or `INCLUDE`), `non_key_attributes` for `INCLUDE`, and `read_capacity` and `write_capacity` for provisioned billing |
 | `ttl_attribute` | `string` | `null` | Attribute holding an expiry time in Unix epoch seconds. When set, DynamoDB deletes items once that time has passed |
 | `billing_mode` | `string` | `"PAY_PER_REQUEST"` | `PAY_PER_REQUEST` (on demand) or `PROVISIONED` |
 | `read_capacity` | `number` | `null` | Read capacity units. Required with `PROVISIONED`, ignored otherwise |
